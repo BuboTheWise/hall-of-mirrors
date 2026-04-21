@@ -1,0 +1,108 @@
+# Hall of Mirrors – Python Dependencies
+# 
+# Minimal dependencies for distributed consciousness tools
+# Version: 1.0.0
+# Last Updated: 2026-04-21
+
+# === Core Dependencies ===
+
+# Async HTTP client for MCP connections (if needed)
+aiohttp>=3.9.0
+
+# YAML parsing for checkpoint files
+pyyaml>=6.0.1
+
+# JSON handling (built-in, but explicit for completeness)
+json>=2.0.0  # noqa: F401
+
+# === Optional Dependencies ===
+
+# Advanced data validation (not required for MVP)
+# attrs>=23.1.0
+
+# Timezone handling
+# python-dateutil>=2.8.2
+
+# === Testing/Development (optional) ===
+
+# pytest>=7.4.0
+# pytest-asyncio>=0.21.0
+# pytest-cov>=4.1.0
+
+# === Development Tools (optional) ===
+
+# black>=23.7.0  # Code formatter
+# flake8>=6.0.0  # Linter
+# mypy>=1.4.0    # Type checker
+# pre-commit>=3.3.3  # Git hooks
+
+# === Documentation (optional) ===
+
+# mkdocs>=1.5.0
+# myst-parser>=1.0.0
+
+# === External Integration (optional) ===
+
+# Obsidian API (if using Obsidian sync)
+# obsidian-api>=0.14.0
+
+# Nextcloud CLI client
+# python-gnupg>=2.3.0  # GPG integration
+
+# === Security (optional) ===
+
+# cryptography>=41.0.0  # If encrypting MemPalace at rest
+# bcrypt>=4.0.1        # Password hashing
+
+# === Performance (optional) ===
+
+# redis>=5.0.0         # If using Redis for caching
+# sqlalchemy>=2.0.0    # If using SQL DB instead of MemPalace
+
+# === Development Environment Setup (optional) ===
+
+# pip-tools>=7.3.0    # Pip dependency management
+# poetry>=1.7.0       # Python packaging
+# pipx>=1.3.0         # Install Python CLI tools globally
+
+# === Notes ===
+# 
+# MVP Dependencies: Only aiohttp and pyyaml are required for Phase 1.
+# All other dependencies are optional and can be added later.
+# 
+# Installation Options:
+# 
+#   - Minimal (MVP only):
+#     pip install aiohttp pyyaml
+# 
+#   - Development:
+#     pip install -r requirements.txt
+# 
+#   - Production:
+#     pip install --upgrade aiohttp pyyaml
+#
+# === Usage ===
+#
+# Add to your project:
+#
+#     import aiohttp
+#     import yaml
+#
+#     with open("checkpoints/2026-04-21-desktop.json", "r") as f:
+#         data = yaml.safe_load(f)
+#
+#     async with aiohttp.ClientSession() as session:
+#         async with session.get("http://localhost:{}".format(mcp_port)) as resp:
+#             result = await resp.json()
+#
+# === Environment Variables ===
+# 
+# Add these to your .env file for optional integrations:
+# 
+#     MCP_PORT=8080
+#     OCEAN_DROPLET_ID=abc123
+#     OBSIDIAN_VAULT_PATH=/path/to/vault
+#     NEXTCLOUD_URL=https://cloud.example.com
+#     NEXTCLOUD_USER=user@example.com
+#     NEXTCLOUD_TOKEN=your_token
+#
