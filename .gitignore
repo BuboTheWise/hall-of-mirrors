@@ -7,7 +7,10 @@ __pycache__/
 venv/
 env/
 ENV/
-.venv
+.venv/
+*.egg-info/
+dist/
+build/
 
 # Checkpoints and logs
 .checkpoints/
@@ -18,7 +21,18 @@ ENV/
 .vscode/
 .idea/
 *.swp
+*.swo
+*.sublime-*
+.project
+.settings/
 
 # OS
 .DS_Store
 Thumbs.db
+*.swp
+
+# Test files
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
