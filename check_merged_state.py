@@ -26,22 +26,6 @@ def _git(repo_path, *args):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
 
-def parse_oneline_date(line):
-    """Extract committer date from `git log --oneline` line. Returns naive UTC or None."""
-    m = re.search(r"Date:\s*(\S+)", line)
-    if not m:
-        return None
-    s = m.group(1)
-    # Normalize missing seconds in timezone offsets like +08 -> +08:00
-    if re.search(r"[+-]\d{2}$", s):
-        s += ":00"
-    try:
-        dt = datetime.datetime.fromisoformat(s).astimezone(datetime.timezone.utc)
-        return dt.replace(tzinfo=None)
-    except Exception:
-        return None
-
-
 _WORDS_RE = re.compile(r"[a-z0-9][a-z0-9\-]*")
 
 
@@ -135,8 +119,7 @@ def find_stale_branches(repo_path, older_than_days=7):
     limited output.
     """
     repo = pathlib.Path(repo_path).resolve()
-    # Use for-each-ref with %(*committerdate:iso8601) and %(committerdate:iso8601)
-    # to get accurate commit dates without needing "Date:" in the line output.
+    # Pipe separator — branch names, SHA short hashes, and dates never contain pipes.
     fmt = "%(refname:short)|%(objectname:short)|%(committerdate:iso8601-strict)"
     out = _git(str(repo), "for-each-ref", "--sort=-committerdate", f"--format={fmt}", "refs/heads/")
     if out.returncode != 0:
@@ -146,31 +129,25 @@ def find_stale_branches(repo_path, older_than_days=7):
     cutoff = now - datetime.timedelta(days=older_than_days)
     stale = []
 
-    _ZERO_PAD = re.compile(r'([+-])(\d{2}) (\d{2}):(\d{2})$')
-
     for line in out.stdout.strip().splitlines():
         if not line:
             continue
-        parts = line.split("%00")  # %00 is the NUL we inserted as separator
+        parts = line.split("|")
         if len(parts) != 3:
             continue
         branch_name = parts[0].strip()
         sha = parts[1].strip()
         ds = parts[2].strip()
 
-        # Parse the ISO-8601 format from %committerdate:iso8601-strict.
-        # Example: "2025-05-10 12:00:00 +0000" -- pad 2h offset to 02:00 as needed.
-        if re.search(r'[+-]\d{2} (\d{2}):(\d{2})$', ds):
-            ds = _ZERO_PAD.sub(r'\1\2 \3:\4', ds)  # "+02 12:30" -> "+02 12:30" already good? No, it might be "+00 12:00" need to ensure format
+        # Parse the ISO-8601 date from git commiterdate:iso8601-strict.
+        # Format: "2025-05-10 12:00:00 +0000" -- needs colon in tz offset for fromisoformat.
         try:
             s = ds.strip()
-            if re.search(r'[+-]\d{2}$', s):
-                s += ":00"
             if re.search(r'[+-]\d{4}$', s):
                 s = s[:-2] + ":" + s[-2:]
             commit_dt = datetime.datetime.fromisoformat(s).astimezone(datetime.timezone.utc)
         except Exception:
-            # Fallback: try parsing as-is with colons on timezone
+            # Skip branches with unparseable dates rather than silently miscounting
             continue
 
         diff = now - commit_dt
@@ -189,8 +166,8 @@ def find_stale_branches(repo_path, older_than_days=7):
 # ── compare_branch_to_master ─────────────────────────────────────────────────
 
 def compare_branch_to_master(branch_name, repo_path):
-    """Compare *branch_name* against master/main/master. Returns ahead/behind counts
-    and mergeability status (dry-run merge).
+    """Compare *branch_name* against main/master. Returns ahead/behind counts
+    and mergeability status (read-only check via git merge-tree).
     """
     repo = pathlib.Path(repo_path).resolve()
 
@@ -208,27 +185,33 @@ def compare_branch_to_master(branch_name, repo_path):
 
     target = "main" if "main" in main_names else ("master" if "master" in main_names else "master")
 
-    # rev-list ahead/behind: symmetric diff
+    # rev-list ahead/behind
     ahead_out = _git(str(repo), "rev-list", "--count", f"{target}..{branch_name}")
-    behind_out = _git(str(repo), "rev-list", "--count", f"{branch_name}...{target}")
+    behind_out = _git(str(repo), "rev-list", "--count", f"{branch_name}..{target}")
 
     ahead = int(ahead_out.stdout.strip()) if ahead_out.returncode == 0 else None
     behind = int(behind_out.stdout.strip()) if behind_out.returncode == 0 else None
 
-    # Mergeability: dry-run merge (--abort afterwards)
-    merge_result = _git(
-        str(repo), "merge", "--no-commit", "--no-ff", "-m", "_preflight-check",
-        branch_name, target,
-    )
-    # Always abort regardless of outcome
-    _git(str(repo), "merge", "--abort")
-
-    mergeable = merge_result.returncode == 0
+    # Mergeability: read-only check via git merge-tree (does not touch working tree)
+    mergeable = True
     merge_conflicts = []
-    if not mergeable:
-        unmerged_out = _git(str(repo), "diff", "--name-only", "--diff-filter=U")
-        if unmerged_out.returncode == 0 and unmerged_out.stdout.strip():
-            merge_conflicts = [f.strip() for f in unmerged_out.stdout.strip().splitlines()]
+    merge_tree_result = _git(str(repo), "merge-tree", target, branch_name)
+    if merge_tree_result.returncode != 0:
+        mergeable = False
+        # Parse conflicts from merge-tree output
+        for ml in merge_tree_result.stdout.splitlines():
+            if ml.strip().startswith("<<<<<"):
+                conf_file = ml.strip()[5:].strip()
+                merge_conflicts.append(conf_file)
+    else:
+        # Check the merge tree result content for conflict markers
+        result_text = merge_tree_result.stdout
+        for ml in result_text.split("\n"):
+            if "<<<<<<" in ml and "conflict:" in ml.lower():
+                mergeable = False
+                conf_match = re.search(r"conflict:\s+(\S+)", ml)
+                if conf_match:
+                    merge_conflicts.append(conf_match.group(1))
 
     return {
         "branch": branch_name,
